@@ -238,7 +238,9 @@ Beautifier.prototype.beautify = function() {
 
   var sweet_code;
   var eol = this._options.eol;
-  for (var iter = 1; iter <= 2; iter++) {
+  var max_iter = 5;
+
+  for (var iter = 1; iter <= max_iter; iter++) {
 
     var source_text = this._reset(this._source_text);
 
@@ -261,12 +263,10 @@ Beautifier.prototype.beautify = function() {
 
     sweet_code = this._output.get_code(eol);
 
-    // must repeat beautify 2nd time to fix corner-case indentations after performing --wrap-line-length
-    if (!this._output.wrap_count) {
-      iter = 2;
-    }
-    if (iter === 1) {
+    // must repeat beautify to fix corner-case indentations after performing --wrap-line-length
+    if ( (iter += this._output.wrap_count > 0 ? 0 : max_iter ) <= max_iter) {
       this._source_text = sweet_code;
+      this._options.preserve_newlines = true;
     }
   }
 
