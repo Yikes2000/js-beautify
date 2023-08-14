@@ -194,6 +194,7 @@ Beautifier.prototype.create_flags = function(flags_base, mode) {
     case_body: false, // the indented case-action block
     case_block: false, // the indented case-action block is wrapped with {}
     indentation_level: next_indent_level,
+    empty_indent_levels: flags_base ? flags_base.empty_indent_levels : [], // seemingly empty indentation levels
     alignment: 0,
     line_indent_level: flags_base ? flags_base.line_indent_level : next_indent_level,
     start_line_index: this._output.get_line_number(),
@@ -236,27 +237,38 @@ Beautifier.prototype.beautify = function() {
   }
 
   var sweet_code;
-  var source_text = this._reset(this._source_text);
-
   var eol = this._options.eol;
-  if (this._options.eol === 'auto') {
-    eol = '\n';
-    if (source_text && acorn.lineBreak.test(source_text || '')) {
-      eol = source_text.match(acorn.lineBreak)[0];
+  var max_iter = 5;
+
+  for (var iter = 1; iter <= max_iter; iter++) {
+
+    var source_text = this._reset(this._source_text);
+
+    if (eol === 'auto') {
+      eol = '\n';
+      if (source_text && acorn.lineBreak.test(source_text || '')) {
+        eol = source_text.match(acorn.lineBreak)[0];
+      }
+    }
+
+    var current_token = this._tokens.next();
+    while (current_token) {
+      this.handle_token(current_token);
+
+      this._last_last_text = this._flags.last_token.text;
+      this._flags.last_token = current_token;
+
+      current_token = this._tokens.next();
+    }
+
+    sweet_code = this._output.get_code(eol);
+
+    // must repeat beautify to fix corner-case indentations after performing --wrap-line-length
+    if ( (iter += this._output.wrap_count > 0 ? 0 : max_iter ) <= max_iter) {
+      this._source_text = sweet_code;
+      this._options.preserve_newlines = true;
     }
   }
-
-  var current_token = this._tokens.next();
-  while (current_token) {
-    this.handle_token(current_token);
-
-    this._last_last_text = this._flags.last_token.text;
-    this._flags.last_token = current_token;
-
-    current_token = this._tokens.next();
-  }
-
-  sweet_code = this._output.get_code(eol);
 
   return sweet_code;
 };
@@ -439,13 +451,31 @@ Beautifier.prototype.print_token = function(current_token) {
 Beautifier.prototype.indent = function() {
   this._flags.indentation_level += 1;
   this._output.set_indent(this._flags.indentation_level, this._flags.alignment);
+
+  // detect arrow functions and track their empty indent levels
+  var current_line = this._output.current_line;
+  if (current_line.__items.join('').match(/=>\s*\{$/)) { // arrow function
+
+    // allow only one (the first) indent level for arrow function, the remaining are empty indent levels
+    for (var i = current_line.__indent_count + 2; i <= this._flags.indentation_level; i++) {
+      this._flags.empty_indent_levels.unshift(i);
+    }
+  }
+  this._output.__empty_indent_length = this._output.indent_size * this._flags.empty_indent_levels.length;
 };
 
 Beautifier.prototype.deindent = function() {
   if (this._flags.indentation_level > 0 &&
     ((!this._flags.parent) || this._flags.indentation_level > this._flags.parent.indentation_level)) {
+
     this._flags.indentation_level -= 1;
     this._output.set_indent(this._flags.indentation_level, this._flags.alignment);
+
+    // remove empty indent levels
+    while (this._flags.empty_indent_levels[0] > this._flags.indentation_level) {
+      this._flags.empty_indent_levels.shift();
+    }
+    this._output.__empty_indent_length = this._output.indent_size * this._flags.empty_indent_levels.length;
   }
 };
 

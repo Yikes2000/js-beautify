@@ -82,8 +82,10 @@ OutputLine.prototype._set_wrap_point = function() {
 };
 
 OutputLine.prototype._should_wrap = function() {
+  // certain constructs, e.g. arrow functions, add extra empty indent levels which are removed later, but here
+  // they erroneously inflate char count for line wrapping unless substracted as __empty_indent_length
   return this.__wrap_point_index &&
-    this.__character_count > this.__parent.wrap_line_length &&
+    this.__character_count - (this.__parent.__empty_indent_length || 0) > this.__parent.wrap_line_length &&
     this.__wrap_point_character_count > this.__parent.next_line.__character_count;
 };
 
@@ -102,6 +104,7 @@ OutputLine.prototype._allow_wrap = function() {
       next.__items.splice(0, 1);
       next.__character_count -= 1;
     }
+    this.__parent.wrap_count++;
     return true;
   }
   return false;
@@ -241,6 +244,7 @@ function Output(options, baseIndentString) {
   this._end_with_newline = options.end_with_newline;
   this.indent_size = options.indent_size;
   this.wrap_line_length = options.wrap_line_length;
+  this.wrap_count = 0;
   this.indent_empty_lines = options.indent_empty_lines;
   this.__lines = [];
   this.previous_line = null;
